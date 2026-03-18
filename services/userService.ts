@@ -1,6 +1,6 @@
-import { supabase } from './supabaseClient';
 import { User, BlockedIP } from '../types';
-import { verifyPassword } from './hashUtils';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 const dbRowToUser = (row: any): User => ({
   id: row.user_id,
@@ -32,16 +32,12 @@ const userToDbRow = (user: User) => ({
 
 export const fetchUsersFromSupabase = async (): Promise<User[]> => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching users:', error);
+    const response = await fetch(`${BACKEND_URL}/api/users`);
+    if (!response.ok) {
+      console.error('Error fetching users:', response.statusText);
       return [];
     }
-
+    const data = await response.json();
     return (data || []).map(dbRowToUser);
   } catch (err) {
     console.error('Error in fetchUsersFromSupabase:', err);
@@ -51,16 +47,10 @@ export const fetchUsersFromSupabase = async (): Promise<User[]> => {
 
 export const fetchUserByEmail = async (email: string): Promise<User | null> => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email.toLowerCase())
-      .single();
-
-    if (error || !data) {
-      return null;
-    }
-
+    const response = await fetch(`${BACKEND_URL}/api/users/by-email/${encodeURIComponent(email.toLowerCase())}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data) return null;
     return dbRowToUser(data);
   } catch (err) {
     console.error('Error in fetchUserByEmail:', err);
@@ -74,18 +64,19 @@ export const createUserInSupabase = async (user: User, passwordHash?: string): P
     if (passwordHash) {
       dbRow.password_hash = passwordHash;
     }
-    
-    const { data, error } = await supabase
-      .from('users')
-      .insert([dbRow])
-      .select()
-      .single();
 
-    if (error) {
-      console.error('Error creating user:', error);
+    const response = await fetch(`${BACKEND_URL}/api/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dbRow),
+    });
+
+    if (!response.ok) {
+      console.error('Error creating user:', response.statusText);
       return null;
     }
 
+    const data = await response.json();
     return dbRowToUser(data);
   } catch (err) {
     console.error('Error in createUserInSupabase:', err);
@@ -95,9 +86,10 @@ export const createUserInSupabase = async (user: User, passwordHash?: string): P
 
 export const updateUserInSupabase = async (user: User): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('users')
-      .update({
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(user.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         name: user.name,
         role: user.role,
         plan: user.plan,
@@ -107,11 +99,11 @@ export const updateUserInSupabase = async (user: User): Promise<boolean> => {
         ip_address: user.ipAddress,
         is_online: user.isOnline,
         is_blocked: user.isBlocked || false
-      })
-      .eq('user_id', user.id);
+      }),
+    });
 
-    if (error) {
-      console.error('Error updating user:', error);
+    if (!response.ok) {
+      console.error('Error updating user:', response.statusText);
       return false;
     }
 
@@ -124,13 +116,12 @@ export const updateUserInSupabase = async (user: User): Promise<boolean> => {
 
 export const deleteUserFromSupabase = async (userId: string): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('user_id', userId);
+    const response = await fetch(`${BACKEND_URL}/api/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
 
-    if (error) {
-      console.error('Error deleting user:', error);
+    if (!response.ok) {
+      console.error('Error deleting user:', response.statusText);
       return false;
     }
 
@@ -143,17 +134,13 @@ export const deleteUserFromSupabase = async (userId: string): Promise<boolean> =
 
 export const fetchBlockedIPsFromSupabase = async (): Promise<BlockedIP[]> => {
   try {
-    const { data, error } = await supabase
-      .from('blocked_ips')
-      .select('*')
-      .order('blocked_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching blocked IPs:', error);
+    const response = await fetch(`${BACKEND_URL}/api/blocked-ips`);
+    if (!response.ok) {
+      console.error('Error fetching blocked IPs:', response.statusText);
       return [];
     }
-
-    return (data || []).map(row => ({
+    const data = await response.json();
+    return (data || []).map((row: any) => ({
       ip: row.ip_address,
       blockedAt: row.blocked_at,
       reason: row.reason || 'No reason provided'
@@ -166,15 +153,17 @@ export const fetchBlockedIPsFromSupabase = async (): Promise<BlockedIP[]> => {
 
 export const blockIPInSupabase = async (ip: string, reason: string): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('blocked_ips')
-      .insert([{
+    const response = await fetch(`${BACKEND_URL}/api/blocked-ips`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         ip_address: ip,
         reason: reason || 'No reason provided'
-      }]);
+      }),
+    });
 
-    if (error) {
-      console.error('Error blocking IP:', error);
+    if (!response.ok) {
+      console.error('Error blocking IP:', response.statusText);
       return false;
     }
 
@@ -187,13 +176,12 @@ export const blockIPInSupabase = async (ip: string, reason: string): Promise<boo
 
 export const unblockIPInSupabase = async (ip: string): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from('blocked_ips')
-      .delete()
-      .eq('ip_address', ip);
+    const response = await fetch(`${BACKEND_URL}/api/blocked-ips/${encodeURIComponent(ip)}`, {
+      method: 'DELETE',
+    });
 
-    if (error) {
-      console.error('Error unblocking IP:', error);
+    if (!response.ok) {
+      console.error('Error unblocking IP:', response.statusText);
       return false;
     }
 
@@ -206,17 +194,16 @@ export const unblockIPInSupabase = async (ip: string): Promise<boolean> => {
 
 export const verifyUserPassword = async (email: string, password: string): Promise<boolean> => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('password_hash')
-      .eq('email', email.toLowerCase())
-      .single();
+    const response = await fetch(`${BACKEND_URL}/api/users/verify-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.toLowerCase(), password }),
+    });
 
-    if (error || !data || !data.password_hash) {
-      return false;
-    }
+    if (!response.ok) return false;
 
-    return verifyPassword(password, data.password_hash);
+    const data = await response.json();
+    return data.valid === true;
   } catch (err) {
     console.error('Error in verifyUserPassword:', err);
     return false;
@@ -225,17 +212,10 @@ export const verifyUserPassword = async (email: string, password: string): Promi
 
 export const isIPBlocked = async (ip: string): Promise<boolean> => {
   try {
-    const { data, error } = await supabase
-      .from('blocked_ips')
-      .select('ip_address')
-      .eq('ip_address', ip)
-      .single();
-
-    if (error || !data) {
-      return false;
-    }
-
-    return true;
+    const response = await fetch(`${BACKEND_URL}/api/blocked-ips/check/${encodeURIComponent(ip)}`);
+    if (!response.ok) return false;
+    const data = await response.json();
+    return data.blocked === true;
   } catch (err) {
     return false;
   }
