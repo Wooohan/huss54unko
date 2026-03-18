@@ -99,8 +99,8 @@ export const FMCSARegister: React.FC = () => {
     setError('');
     try {
       const formattedDate = formatDateForAPI(selectedDate);
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const apiUrl = isLocal ? 'http://localhost:3001/api/fmcsa-register' : '/api/fmcsa-register';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const apiUrl = `${backendUrl}/api/fmcsa-register`;
       
       const response = await fetch(apiUrl, {
         method: 'POST',
