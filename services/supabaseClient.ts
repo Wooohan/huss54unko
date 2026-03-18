@@ -1,15 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables');
-  console.error('Required: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
-  throw new Error('Missing Supabase environment variables');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 // Database types
 export interface CarrierRecord {
@@ -47,14 +36,74 @@ export interface CarrierRecord {
   updated_at?: string;
 }
 
-/**
- * Save a single carrier to Supabase with comprehensive error handling
- */
+const carrierToSnakeCase = (carrier: any): CarrierRecord => ({
+  mc_number: carrier.mcNumber,
+  dot_number: carrier.dotNumber,
+  legal_name: carrier.legalName,
+  dba_name: carrier.dbaName || null,
+  entity_type: carrier.entityType,
+  status: carrier.status,
+  email: carrier.email || null,
+  phone: carrier.phone || null,
+  power_units: carrier.powerUnits || null,
+  drivers: carrier.drivers || null,
+  non_cmv_units: carrier.nonCmvUnits || null,
+  physical_address: carrier.physicalAddress || null,
+  mailing_address: carrier.mailingAddress || null,
+  date_scraped: carrier.dateScraped,
+  mcs150_date: carrier.mcs150Date || null,
+  mcs150_mileage: carrier.mcs150Mileage || null,
+  operation_classification: carrier.operationClassification || [],
+  carrier_operation: carrier.carrierOperation || [],
+  cargo_carried: carrier.cargoCarried || [],
+  out_of_service_date: carrier.outOfServiceDate || null,
+  state_carrier_id: carrier.stateCarrierId || null,
+  duns_number: carrier.dunsNumber || null,
+  safety_rating: carrier.safetyRating || null,
+  safety_rating_date: carrier.safetyRatingDate || null,
+  basic_scores: carrier.basicScores || null,
+  oos_rates: carrier.oosRates || null,
+  insurance_policies: carrier.insurancePolicies || null,
+  inspections: carrier.inspections || null,
+  crashes: carrier.crashes || null,
+});
+
+const snakeToCamelCase = (record: any) => ({
+  mcNumber: record.mc_number,
+  dotNumber: record.dot_number,
+  legalName: record.legal_name,
+  dbaName: record.dba_name,
+  entityType: record.entity_type,
+  status: record.status,
+  email: record.email,
+  phone: record.phone,
+  powerUnits: record.power_units,
+  drivers: record.drivers,
+  non_cmv_units: record.non_cmv_units,
+  physicalAddress: record.physical_address,
+  mailingAddress: record.mailing_address,
+  dateScraped: record.date_scraped,
+  mcs150Date: record.mcs150_date,
+  mcs150Mileage: record.mcs150_mileage,
+  operationClassification: record.operation_classification || [],
+  carrierOperation: record.carrier_operation || [],
+  cargoCarried: record.cargo_carried || [],
+  outOfServiceDate: record.out_of_service_date,
+  stateCarrierId: record.state_carrier_id,
+  dunsNumber: record.duns_number,
+  safetyRating: record.safety_rating,
+  safetyRatingDate: record.safety_rating_date,
+  basicScores: record.basic_scores,
+  oosRates: record.oos_rates,
+  insurancePolicies: record.insurance_policies,
+  inspections: record.inspections,
+  crashes: record.crashes,
+});
+
 export const saveCarrierToSupabase = async (
   carrier: any
 ): Promise<{ success: boolean; error?: string; data?: any }> => {
   try {
-    // Validate required fields
     if (!carrier.mcNumber || !carrier.dotNumber || !carrier.legalName) {
       return {
         success: false,
@@ -62,54 +111,27 @@ export const saveCarrierToSupabase = async (
       };
     }
 
-    const record: CarrierRecord = {
-      mc_number: carrier.mcNumber,
-      dot_number: carrier.dotNumber,
-      legal_name: carrier.legalName,
-      dba_name: carrier.dbaName || null,
-      entity_type: carrier.entityType,
-      status: carrier.status,
-      email: carrier.email || null,
-      phone: carrier.phone || null,
-      power_units: carrier.powerUnits || null,
-      drivers: carrier.drivers || null,
-      non_cmv_units: carrier.nonCmvUnits || null,
-      physical_address: carrier.physicalAddress || null,
-      mailing_address: carrier.mailingAddress || null,
-      date_scraped: carrier.dateScraped,
-      mcs150_date: carrier.mcs150Date || null,
-      mcs150_mileage: carrier.mcs150Mileage || null,
-      operation_classification: carrier.operationClassification || [],
-      carrier_operation: carrier.carrierOperation || [],
-      cargo_carried: carrier.cargoCarried || [],
-      out_of_service_date: carrier.outOfServiceDate || null,
-      state_carrier_id: carrier.stateCarrierId || null,
-      duns_number: carrier.dunsNumber || null,
-      safety_rating: carrier.safetyRating || null,
-      safety_rating_date: carrier.safetyRatingDate || null,
-      basic_scores: carrier.basicScores || null,
-      oos_rates: carrier.oosRates || null,
-      insurance_policies: carrier.insurancePolicies || null,
-      inspections: carrier.inspections || null,
-      crashes: carrier.crashes || null,
-    };
+    const record = carrierToSnakeCase(carrier);
 
-    const { data, error } = await supabase
-      .from('carriers')
-      .upsert(record, { onConflict: 'mc_number' });
+    const response = await fetch(`${BACKEND_URL}/api/carriers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    });
 
-    if (error) {
-      console.error('Supabase save error:', error);
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
       return {
         success: false,
-        error: `Database error: ${error.message}`,
+        error: `Backend error: ${errData.error || response.statusText}`,
       };
     }
 
+    const data = await response.json();
     console.log('Carrier saved:', carrier.mcNumber);
     return { success: true, data };
   } catch (err: any) {
-    console.error('Exception saving to Supabase:', err);
+    console.error('Exception saving carrier:', err);
     return {
       success: false,
       error: `Exception: ${err.message}`,
@@ -117,62 +139,60 @@ export const saveCarrierToSupabase = async (
   }
 };
 
-/**
- * Save multiple carriers in batch
- */
 export const saveCarriersToSupabase = async (
   carriers: any[]
 ): Promise<{ success: boolean; error?: string; saved: number; failed: number }> => {
-  let saved = 0;
-  let failed = 0;
+  try {
+    const records = carriers.map(carrierToSnakeCase);
 
-  for (const carrier of carriers) {
-    const result = await saveCarrierToSupabase(carrier);
-    if (result.success) {
-      saved++;
-    } else {
-      failed++;
-      console.warn(`Failed to save carrier ${carrier.mcNumber}:`, result.error);
+    const response = await fetch(`${BACKEND_URL}/api/carriers/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ carriers: records }),
+    });
+
+    if (!response.ok) {
+      return { success: false, saved: 0, failed: carriers.length, error: 'Backend batch save failed' };
     }
-  }
 
-  return {
-    success: failed === 0,
-    saved,
-    failed,
-    error: failed > 0 ? `${failed} carriers failed to save` : undefined,
-  };
+    const data = await response.json();
+    return {
+      success: data.success,
+      saved: data.saved || 0,
+      failed: data.failed || 0,
+      error: data.failed > 0 ? `${data.failed} carriers failed to save` : undefined,
+    };
+  } catch (err: any) {
+    console.error('Exception batch saving carriers:', err);
+    return { success: false, saved: 0, failed: carriers.length, error: err.message };
+  }
 };
 
 export interface CarrierFilters {
-  // Motor Carrier
   mcNumber?: string;
   dotNumber?: string;
   legalName?: string;
-  active?: string;           // 'true' | 'false' | ''
+  active?: string;
   state?: string;
-  hasEmail?: string;         // 'true' | 'false' | ''
-  hasBoc3?: string;          // 'true' | 'false' | ''
-  hasCompanyRep?: string;    // 'true' | 'false' | ''
+  hasEmail?: string;
+  hasBoc3?: string;
+  hasCompanyRep?: string;
   yearsInBusinessMin?: number;
   yearsInBusinessMax?: number;
-  // Carrier Operation
   classification?: string[];
   carrierOperation?: string[];
-  hazmat?: string;           // 'true' | 'false' | ''
+  hazmat?: string;
   powerUnitsMin?: number;
   powerUnitsMax?: number;
   driversMin?: number;
   driversMax?: number;
   cargo?: string[];
-  // Insurance Policy
   insuranceRequired?: string[];
   bipdMin?: number;
   bipdMax?: number;
-  bipdOnFile?: string;       // '1' | '0' | ''
-  cargoOnFile?: string;      // '1' | '0' | ''
-  bondOnFile?: string;       // '1' | '0' | ''
-  // Safety
+  bipdOnFile?: string;
+  cargoOnFile?: string;
+  bondOnFile?: string;
   oosMin?: number;
   oosMax?: number;
   crashesMin?: number;
@@ -185,146 +205,52 @@ export interface CarrierFilters {
   towawayMax?: number;
   inspectionsMin?: number;
   inspectionsMax?: number;
-  // Pagination
   limit?: number;
 }
 
 export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): Promise<any[]> => {
   try {
-    let query = supabase
-      .from('carriers')
-      .select('*');
+    const params = new URLSearchParams();
 
-    const isFiltered = Object.keys(filters).some(k => {
-      const key = k as keyof CarrierFilters;
-      const val = filters[key];
-      if (key === 'limit') return false;
-      if (Array.isArray(val)) return val.length > 0;
-      return val !== undefined && val !== '';
-    });
+    if (filters.mcNumber) params.set('mc_number', filters.mcNumber);
+    if (filters.dotNumber) params.set('dot_number', filters.dotNumber);
+    if (filters.legalName) params.set('legal_name', filters.legalName);
+    if (filters.active) params.set('active', filters.active);
+    if (filters.state) params.set('state', filters.state);
+    if (filters.hasEmail) params.set('has_email', filters.hasEmail);
+    if (filters.hasBoc3) params.set('has_boc3', filters.hasBoc3);
+    if (filters.hasCompanyRep) params.set('has_company_rep', filters.hasCompanyRep);
+    if (filters.classification && filters.classification.length > 0) params.set('classification', filters.classification.join(','));
+    if (filters.carrierOperation && filters.carrierOperation.length > 0) params.set('carrier_operation', filters.carrierOperation.join(','));
+    if (filters.cargo && filters.cargo.length > 0) params.set('cargo', filters.cargo.join(','));
+    if (filters.hazmat) params.set('hazmat', filters.hazmat);
+    if (filters.powerUnitsMin !== undefined) params.set('power_units_min', filters.powerUnitsMin.toString());
+    if (filters.powerUnitsMax !== undefined) params.set('power_units_max', filters.powerUnitsMax.toString());
+    if (filters.driversMin !== undefined) params.set('drivers_min', filters.driversMin.toString());
+    if (filters.driversMax !== undefined) params.set('drivers_max', filters.driversMax.toString());
+    if (filters.insuranceRequired && filters.insuranceRequired.length > 0) params.set('insurance_required', filters.insuranceRequired.join(','));
+    if (filters.bipdMin !== undefined) params.set('bipd_min', filters.bipdMin.toString());
+    if (filters.bipdMax !== undefined) params.set('bipd_max', filters.bipdMax.toString());
+    if (filters.bipdOnFile) params.set('bipd_on_file', filters.bipdOnFile);
+    if (filters.cargoOnFile) params.set('cargo_on_file', filters.cargoOnFile);
+    if (filters.bondOnFile) params.set('bond_on_file', filters.bondOnFile);
+    if (filters.limit) params.set('limit', filters.limit.toString());
 
-    if (filters.mcNumber) {
-      query = query.ilike('mc_number', `%${filters.mcNumber}%`);
-    }
-    if (filters.dotNumber) {
-      query = query.ilike('dot_number', `%${filters.dotNumber}%`);
-    }
-    if (filters.legalName) {
-      query = query.ilike('legal_name', `%${filters.legalName}%`);
-    }
-    if (filters.active === 'true') {
-      query = query.ilike('status', '%AUTHORIZED%').not('status', 'ilike', '%NOT%');
-    } else if (filters.active === 'false') {
-      query = query.or('status.ilike.%NOT AUTHORIZED%,status.not.ilike.%AUTHORIZED%');
-    }
-    if (filters.state) {
-      // Correct syntax for OR with ILIKE in PostgREST when using special characters like commas:
-      // We must wrap the pattern in double quotes.
-      const states = filters.state.split('|');
-      const stateOrConditions = states.map(s => `physical_address.ilike."%, ${s}%"`).join(',');
-      query = query.or(stateOrConditions);
-    }
-    if (filters.hasEmail === 'true') {
-      query = query.not('email', 'is', null).neq('email', '');
-    } else if (filters.hasEmail === 'false') {
-      query = query.or('email.is.null,email.eq.');
-    }
-    if (filters.hasBoc3 === 'true') {
-      query = query.contains('carrier_operation', ['BOC-3']);
-    } else if (filters.hasBoc3 === 'false') {
-      query = query.not('carrier_operation', 'cs', '{"BOC-3"}');
-    }
+    const queryString = params.toString();
+    const url = `${BACKEND_URL}/api/carriers${queryString ? `?${queryString}` : ''}`;
 
-    if (filters.classification && filters.classification.length > 0) {
-      query = query.overlaps('operation_classification', filters.classification);
-    }
-    if (filters.carrierOperation && filters.carrierOperation.length > 0) {
-      query = query.overlaps('carrier_operation', filters.carrierOperation);
-    }
-    if (filters.cargo && filters.cargo.length > 0) {
-      query = query.overlaps('cargo_carried', filters.cargo);
-    }
-    if (filters.hazmat === 'true') {
-      query = query.contains('cargo_carried', ['Hazardous Materials']);
-    } else if (filters.hazmat === 'false') {
-      query = query.not('cargo_carried', 'cs', '{"Hazardous Materials"}');
-    }
-    if (filters.powerUnitsMin !== undefined) {
-      query = query.gte('power_units', filters.powerUnitsMin.toString());
-    }
-    if (filters.powerUnitsMax !== undefined) {
-      query = query.lte('power_units', filters.powerUnitsMax.toString());
-    }
-    if (filters.driversMin !== undefined) {
-      query = query.gte('drivers', filters.driversMin.toString());
-    }
-    if (filters.driversMax !== undefined) {
-      query = query.lte('drivers', filters.driversMax.toString());
-    }
-
-    if (filters.insuranceRequired && filters.insuranceRequired.length > 0) {
-      // Filter by insurance type in the insurance_policies JSONB array
-      const insuranceOrConditions = filters.insuranceRequired.map(type => `insurance_policies.cs.[{"type": "${type}"}]`).join(',');
-      query = query.or(insuranceOrConditions);
-    }
-    if (filters.bipdOnFile === '1') {
-      query = query.not('insurance_policies', 'is', null);
-    }
-    if (filters.cargoOnFile === '1') {
-      query = query.not('insurance_policies', 'is', null);
-    }
-    if (filters.bondOnFile === '1') {
-      query = query.not('insurance_policies', 'is', null);
-    }
-
-    query = query.order('created_at', { ascending: false });
-
-    if (!isFiltered) {
-      query = query.limit(200);
-    } else if (filters.limit) {
-      query = query.limit(filters.limit);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Supabase fetch error:', error);
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('Backend fetch error:', response.statusText);
       return [];
     }
 
-    let results = (data || []).map((record: any) => ({
-      mcNumber: record.mc_number,
-      dotNumber: record.dot_number,
-      legalName: record.legal_name,
-      dbaName: record.dba_name,
-      entityType: record.entity_type,
-      status: record.status,
-      email: record.email,
-      phone: record.phone,
-      powerUnits: record.power_units,
-      drivers: record.drivers,
-      non_cmv_units: record.non_cmv_units,
-      physicalAddress: record.physical_address,
-      mailingAddress: record.mailing_address,
-      dateScraped: record.date_scraped,
-      mcs150Date: record.mcs150_date,
-      mcs150Mileage: record.mcs150_mileage,
-      operationClassification: record.operation_classification || [],
-      carrierOperation: record.carrier_operation || [],
-      cargoCarried: record.cargo_carried || [],
-      outOfServiceDate: record.out_of_service_date,
-      stateCarrierId: record.state_carrier_id,
-      dunsNumber: record.duns_number,
-      safetyRating: record.safety_rating,
-      safetyRatingDate: record.safety_rating_date,
-      basicScores: record.basic_scores,
-      oosRates: record.oos_rates,
-      insurancePolicies: record.insurance_policies,
-      inspections: record.inspections,
-      crashes: record.crashes,
-    }));
+    const data = await response.json();
+    const records = Array.isArray(data) ? data : [];
 
-    // Post-fetch filtering for Years in Business (since mcs150_date is a string in various formats)
+    let results = records.map(snakeToCamelCase);
+
+    // Post-fetch filtering for Years in Business
     if (filters.yearsInBusinessMin !== undefined || filters.yearsInBusinessMax !== undefined) {
       results = results.filter(carrier => {
         if (!carrier.mcs150Date || carrier.mcs150Date === 'N/A') return false;
@@ -334,7 +260,7 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
           const diffMs = Date.now() - date.getTime();
           const ageDate = new Date(diffMs);
           const years = Math.abs(ageDate.getUTCFullYear() - 1970);
-          
+
           if (filters.yearsInBusinessMin !== undefined && years < filters.yearsInBusinessMin) return false;
           if (filters.yearsInBusinessMax !== undefined && years > filters.yearsInBusinessMax) return false;
           return true;
@@ -344,8 +270,7 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
       });
     }
 
-    // Post-fetch filtering for Safety Metrics (OOS Violations, Crashes, Injuries, Inspections)
-    // These are stored in JSONB columns and need to be filtered client-side
+    // Post-fetch filtering for Safety Metrics
     if (
       filters.oosMin !== undefined || filters.oosMax !== undefined ||
       filters.crashesMin !== undefined || filters.crashesMax !== undefined ||
@@ -355,28 +280,25 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
       filters.inspectionsMin !== undefined || filters.inspectionsMax !== undefined
     ) {
       results = results.filter(carrier => {
-        // Count OOS Violations from inspections
         if (filters.oosMin !== undefined || filters.oosMax !== undefined) {
           let oosCount = 0;
           if (carrier.inspections && Array.isArray(carrier.inspections)) {
-            oosCount = carrier.inspections.reduce((sum, inspection) => sum + (inspection.oosViolations || 0), 0);
+            oosCount = carrier.inspections.reduce((sum: number, inspection: any) => sum + (inspection.oosViolations || 0), 0);
           }
           if (filters.oosMin !== undefined && oosCount < filters.oosMin) return false;
           if (filters.oosMax !== undefined && oosCount > filters.oosMax) return false;
         }
 
-        // Count total crashes
         if (filters.crashesMin !== undefined || filters.crashesMax !== undefined) {
           const crashCount = (carrier.crashes && Array.isArray(carrier.crashes)) ? carrier.crashes.length : 0;
           if (filters.crashesMin !== undefined && crashCount < filters.crashesMin) return false;
           if (filters.crashesMax !== undefined && crashCount > filters.crashesMax) return false;
         }
 
-        // Count total injuries from crashes
         if (filters.injuriesMin !== undefined || filters.injuriesMax !== undefined) {
           let injuryCount = 0;
           if (carrier.crashes && Array.isArray(carrier.crashes)) {
-            injuryCount = carrier.crashes.reduce((sum, crash) => {
+            injuryCount = carrier.crashes.reduce((sum: number, crash: any) => {
               const injuries = parseInt(crash.injuries || '0');
               return sum + (isNaN(injuries) ? 0 : injuries);
             }, 0);
@@ -385,11 +307,10 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
           if (filters.injuriesMax !== undefined && injuryCount > filters.injuriesMax) return false;
         }
 
-        // Count total fatalities from crashes
         if (filters.fatalitiesMin !== undefined || filters.fatalitiesMax !== undefined) {
           let fatalityCount = 0;
           if (carrier.crashes && Array.isArray(carrier.crashes)) {
-            fatalityCount = carrier.crashes.reduce((sum, crash) => {
+            fatalityCount = carrier.crashes.reduce((sum: number, crash: any) => {
               const fatals = parseInt(crash.fatal || '0');
               return sum + (isNaN(fatals) ? 0 : fatals);
             }, 0);
@@ -398,19 +319,15 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
           if (filters.fatalitiesMax !== undefined && fatalityCount > filters.fatalitiesMax) return false;
         }
 
-        // Count total towaways (vehicles towed) - typically from crash data
         if (filters.towawayMin !== undefined || filters.towawayMax !== undefined) {
           let towawayCount = 0;
           if (carrier.crashes && Array.isArray(carrier.crashes)) {
-            // Assuming towaways are a subset of crashes or marked in crash data
-            // If not explicitly marked, we count crashes as potential towaways
             towawayCount = carrier.crashes.length;
           }
           if (filters.towawayMin !== undefined && towawayCount < filters.towawayMin) return false;
           if (filters.towawayMax !== undefined && towawayCount > filters.towawayMax) return false;
         }
 
-        // Count total inspections
         if (filters.inspectionsMin !== undefined || filters.inspectionsMax !== undefined) {
           const inspectionCount = (carrier.inspections && Array.isArray(carrier.inspections)) ? carrier.inspections.length : 0;
           if (filters.inspectionsMin !== undefined && inspectionCount < filters.inspectionsMin) return false;
@@ -423,26 +340,22 @@ export const fetchCarriersFromSupabase = async (filters: CarrierFilters = {}): P
 
     return results;
   } catch (err) {
-    console.error('Exception fetching from Supabase:', err);
+    console.error('Exception fetching carriers:', err);
     return [];
   }
 };
 
-/**
- * Delete carrier by MC number
- */
 export const deleteCarrier = async (
   mcNumber: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('carriers')
-      .delete()
-      .eq('mc_number', mcNumber);
+    const response = await fetch(`${BACKEND_URL}/api/carriers/${encodeURIComponent(mcNumber)}`, {
+      method: 'DELETE',
+    });
 
-    if (error) {
-      console.error('Supabase delete error:', error);
-      return { success: false, error: error.message };
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      return { success: false, error: errData.error || response.statusText };
     }
 
     console.log('Carrier deleted:', mcNumber);
@@ -453,21 +366,12 @@ export const deleteCarrier = async (
   }
 };
 
-/**
- * Get carrier count
- */
 export const getCarrierCount = async (): Promise<number> => {
   try {
-    const { count, error } = await supabase
-      .from('carriers')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) {
-      console.error('Error getting carrier count:', error);
-      return 0;
-    }
-
-    return count || 0;
+    const response = await fetch(`${BACKEND_URL}/api/carriers/count`);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.count || 0;
   } catch (err) {
     console.error('Exception getting carrier count:', err);
     return 0;
@@ -476,43 +380,36 @@ export const getCarrierCount = async (): Promise<number> => {
 
 export const updateCarrierInsurance = async (dotNumber: string, insuranceData: any): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('carriers')
-      .update({
-        insurance_policies: insuranceData.policies,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('dot_number', dotNumber);
+    const response = await fetch(`${BACKEND_URL}/api/carriers/${encodeURIComponent(dotNumber)}/insurance`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ policies: insuranceData.policies }),
+    });
 
-    if (error) {
-      console.error('Supabase update error:', error);
-      return { success: false, error: error.message };
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      return { success: false, error: errData.error || response.statusText };
     }
 
     console.log('Insurance data updated for DOT:', dotNumber);
     return { success: true };
   } catch (err: any) {
-    console.error('Exception updating Supabase:', err);
+    console.error('Exception updating insurance:', err);
     return { success: false, error: err.message };
   }
 };
 
 export const updateCarrierSafety = async (dotNumber: string, safetyData: any): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { error } = await supabase
-      .from('carriers')
-      .update({
-        safety_rating: safetyData.rating,
-        safety_rating_date: safetyData.ratingDate,
-        basic_scores: safetyData.basicScores,
-        oos_rates: safetyData.oosRates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('dot_number', dotNumber);
+    const response = await fetch(`${BACKEND_URL}/api/carriers/${encodeURIComponent(dotNumber)}/safety`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(safetyData),
+    });
 
-    if (error) {
-      console.error('Supabase safety update error:', error);
-      return { success: false, error: error.message };
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      return { success: false, error: errData.error || response.statusText };
     }
 
     console.log('Safety data updated for DOT:', dotNumber);
@@ -523,23 +420,14 @@ export const updateCarrierSafety = async (dotNumber: string, safetyData: any): P
   }
 };
 
-
-/**
- * Fetches carriers within a specific MC Number range
- */
 export const getCarriersByMCRange = async (start: string, end: string): Promise<any[]> => {
   try {
-    const { data, error } = await supabase
-      .from('carriers')
-      .select('*')
-      .gte('mc_number', start)
-      .lte('mc_number', end)
-      .order('mc_number', { ascending: true });
+    const response = await fetch(`${BACKEND_URL}/api/carriers/range?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    const records = Array.isArray(data) ? data : [];
 
-    if (error) throw error;
-
-    // Map snake_case from DB to camelCase for the App
-    return (data || []).map(record => ({
+    return records.map(record => ({
       mcNumber: record.mc_number,
       dotNumber: record.dot_number,
       legalName: record.legal_name,
